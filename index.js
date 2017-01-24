@@ -87,6 +87,9 @@ function gulpMarked(opt) {
   return stream;
 }
 
+// Export the marked library for convinience
+gulpMarked.marked = marked;
+
 // Export the file level transform function for other plugins usage
 gulpMarked.fileTransform = fileMarked;
 
