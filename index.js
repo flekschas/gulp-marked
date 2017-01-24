@@ -1,39 +1,36 @@
-var Stream = require('stream')
-  , marked = require('marked')
-  , gutil = require('gulp-util')
-  , path = require('path')
-  , BufferStreams = require('bufferstreams')
-  , _ = require('lodash')
-;
+var Stream = require('stream');
+var marked = require('marked');
+var gutil = require('gulp-util');
+var path = require('path');
+var BufferStreams = require('bufferstreams');
+var _ = require('lodash');
 
-const PLUGIN_NAME = 'gulp-marked';
+var PLUGIN_NAME = 'gulp-marked';
 
 // File level transform function
 function fileMarked(opt) {
   // Return a callback function handling the buffered content
-  return function(err, buf, cb) {
+  return function(err, buf, callback) {
+
+    console.log('fileMarked');
 
     // Handle any error
-    if(err) throw err;
+    if (err) throw err;
 
-    // Create a new Renderer object
-    if (opt) {
-      opt.renderer = _.extend(opt.renderer, new marked.Renderer())
-    }
+    // Set options
+    marked.setOptions(opt || {});
 
     // Use the buffered content
-    marked(String(buf), opt, function (err, content) {
+    marked(buf.toString('utf-8'), function (err, content) {
 
       // Report any error with the callback
       if (err) {
-        cb(new gutil.PluginError(PLUGIN_NAME, err, {showStack: true}));
+        callback(new gutil.PluginError(PLUGIN_NAME, err, { showStack: true }));
       // Give the transformed buffer back
       } else {
-        cb(null, content);
+        callback(null, content);
       }
-
     });
-
   };
 }
 
@@ -41,54 +38,54 @@ function fileMarked(opt) {
 function gulpMarked(opt) {
   // Create a new Renderer object
   if (opt) {
-    opt.renderer = _.extend(opt.renderer, new marked.Renderer())
+    opt.renderer = _.assignIn(new marked.Renderer(), opt.renderer);
   }
   marked.setOptions(opt || {});
 
-  var stream = Stream.Transform({objectMode: true});
+  var stream = Stream.Transform({ objectMode: true });
 
-  stream._transform = function(file, unused, done) {
+  stream._transform = function (file, options, callback) {
      // Do nothing when null
-    if(file.isNull()) {
-      stream.push(file); done();
+    if (file.isNull()) {
+      stream.push(file);
+      callback();
       return;
     }
 
     // If the ext doesn't match, pass it through
     var ext = path.extname(file.path);
-    if('.md' !== ext && '.markdown' !== ext) {
-      stream.push(file); done();
+    if (ext !== '.md' && ext !== '.markdown') {
+      stream.push(file); callback();
       return;
     }
 
-    file.path = gutil.replaceExtension(file.path, ".html");
+    file.path = gutil.replaceExtension(file.path, '.html');
 
     // Buffers
-    if(file.isBuffer()) {
+    if (file.isBuffer()) {
       marked(String(file.contents), function (err, content) {
-        if(err) {
-          stream.emit('error',
-            new gutil.PluginError(PLUGIN_NAME, err, {showStack: true}));
-          return done();
+        if (err) {
+          callback(
+            new gutil.PluginError(PLUGIN_NAME, err, { showStack: true })
+          );
+          return;
         }
-        else if (cb) {
-          content = cb(err, content);
-        }
-        file.contents = Buffer(content);
+
+        file.contents = new Buffer(content);
         stream.push(file);
-        done();
+        callback();
       });
     // Streams
     } else {
-      file.contents = file.contents.pipe(new BufferStreams(fileMarked()));
-      stream.push(file);
-      done();
+      if (file.isStream()) {
+        callback(new gutil.PluginError(PLUGIN_NAME, 'Streaming not supported'));
+        return;
+      }
     }
   };
 
   return stream;
-
-};
+}
 
 // Export the file level transform function for other plugins usage
 gulpMarked.fileTransform = fileMarked;
